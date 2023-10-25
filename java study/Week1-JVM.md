@@ -11,7 +11,7 @@ JVM은 자바(JAVA)와 운영체제 사이에서 중개하는 역할을 수행�
 
 ## 2. 컴파일 하는 방법
 
-.java -> .class(byte code)로 변환하는 과정을 컴파일이라고 합니다.
+.java -> .class(bytecode)로 변환하는 과정을 컴파일이라고 합니다.
 
 ```shell
 $ sudo vi Hello.java
@@ -108,7 +108,7 @@ drwxr-xr-x  23 user  staff   736 10 15 20:29 ..
 
 ## 3. 실행하는 방법
 
-.class(byte code)를 운영체제 실행합니다.
+.class(bytecode)를 운영체제 실행합니다.
 
 ```shell
 # To launch a class file:
@@ -170,7 +170,7 @@ Constant pool:
    #4 = Methodref          #19.#20        // java/io/PrintStream.println:(Ljava/lang/String;)V
    #5 = Class              #21            // Hello
    #6 = Class              #22            // java/lang/Object
-   #7 = Utf8               <init>
+   #7 = Utf8               <init>         // 생성자
    #8 = Utf8               ()V
    #9 = Utf8               Code
   #10 = Utf8               LineNumberTable
@@ -264,7 +264,7 @@ SourceFile: "Hello.java"
 
 - FQCN(Fully-Quailified Class Name) : 클래스 로더, 클래스 패키지 경로, 패키지 이름, 클래스 이름을 모두 포함한 값
 - Class, Interface, Enum
-- 메소드와 변수
+- 메소드와 상수
 
 로딩이 끝나면 해당 클래스 타입의 Class 객체를 생성하여 힙 영역에 저장하게 됩니다.
 
@@ -307,27 +307,96 @@ Static 변수를 초기화하고 값을 할당하는 과정입니다.
 
 #### 1. 메소드(Method) 
 
-메소드 영역에는 클래스 수준의 정보들이 저장 및 공유하는 영역입니다.  
-예로 들어 클래스 이름, 클래스 멤버 변수 이름, 데이터 타입, 메소드의 이름, 리턴 타입, 파라미터, static변수 등이 생성됩니다.
+메서드 영역에는 메타데이터(런타임 상수 풀, 필드 및 메서드 데이터, 클래스, 인스턴스,   
+인터페이스 초기화에 사용되는 생성자 코드와 같은 클래스별 구조)가 저장됩니다.
+자바 8 이전에는 Permanent Generation  메모리 영역에 저장이 되었는데, 제한된 크기를 가지고 있어서
+동적으로 클래스를 만드는 경우  OutOfMemory 발생할 수 있습니다.
+이러한 이유로 자바 8 부터는 Permanent Generation 없어지고, Metaspace 메모리 영역으로 대체되었습니다.
+
+**Permanent Generation**
+
+- Heap에 속하며, 특수한 메모리 영역
+- 클래스 메타데이터를 저장됩니다.
+- 자바 8 부터 없어졌습니다.
+- defalut Max size 
+    - 32bit jvm 64MB
+    - 64bit jvm 82MB
+
+**Metaspace**
+
+- 클래스 메타데이터를 저장됩니다. (Method area가 실제 저장되는 공간)
+- Heap 영역이 아니라, Native 메모리 영역입니다.
+- 기본값으로 제한된 크기를 가지고 있지 않으며 필요한 만큼 계속 늘어납니다.
+
+
 
 #### 2. 힙(Heap)
 
 new 키워드로 생성된 객체(Instance)를 저장 및 공유하는 영역입니다.  
 메소드 영역에 로드된 클래스만 생성이 가능합니다.   
 **힙이나 메소드는 모든 영역에 공유되는 자원입니다.**
+힙 메모리는 세 부분으로 구성됩니다.
+
+- Eden Space – Young Generation 공간의 일부입니다. 객체를 생성하면 JVM은 이 공간에서 메모리를 할당합니다.
+- 생존자 공간(Survivor Space) – 이는 또한 Young Generation 공간의 일부이기도 합니다. 생존 공간에는 GC의 마이너 GC 단계에서 살아남은 기존 객체가 포함됩니다.
+- Tenured Space – 이는 Old Generation 공간으로도 알려져 있습니다. 오래 살아남은 개체를 보유합니다. 기본적으로 Young Generation 객체에는 임계값이 설정되며, 이 임계값이 충족되면 이러한 객체는 Tenured 공간으로 이동됩니다.
+
+
+
+#### string constant pool
+
+![](https://www.baeldung.com/wp-content/uploads/2021/02/stringpool.png)
+
+```java
+String constantString1 = "Baeldung";
+String constantString2 = "Baeldung";
+        
+assertThat(constantString1).isSameAs(constantString2); // true
+```
+
+Java에서 문자열은 불변성을 가지고 있기 때문에 JVM은 문자열의 복사본 하나만 저장하여 할당된 메모리 양을 최적화 할 수 있습니다.  
+이과정을 interning이라고 합니다.  
+문자열 변수를 생성하고 리터널 값을 할당하면 JVM은 poll에서 동일한 값의 문자열을 찾고, 있으면 메모리 주소를 참조하고 없으면 pool에 추가 메모리를 할당합니다.
+
+  
+
+```java
+String constantString = "Baeldung";
+String newString = new String("Baeldung");
+ 
+assertThat(constantString).isNotSameAs(newString); // true
+
+String fifth = "Baeldung";
+String sixth = new String("Baeldung");
+System.out.println(fifth == sixth); // false
+
+String third = new String("Baeldung");
+String fourth = new String("Baeldung"); 
+System.out.println(third == fourth); // false
+```
+
+new 연산자를 이용하여 문자열을 생성하면 새 객체로 인식하고 JVM의 Heap 영역에 저장됩니다.    
+이와 같이 생성된 모든 문자열은 자체 주소를 가지고, 기존 문자열 리터널이 저장되어 있는 String constant pool 영역과 다른 메모리 영역입니다.  
+성능을 위해서 가능하면 문자열 리터럴 표기법으로 사용해야 컴파일러가 코드를 최적할 할 수 있습니다.
+
+java 8이전에는 Permanent Generation 영역에 String constant pool을 배치하였는데, 이는 런타임 시 확장할 수 없고 GC에 수집 대상이 아니였습니다.  
+그래서 String을 interning을 많이 하면 OutOfMemory 오류가 발생하는 경우가 생겨서 java 8 부터는 GC가 수집할 수 있는 Heap 영역에 저장됩니다.  
+gc가 사용하지(참조 하지) 않는 문자열은 pool 제거하여 OutOfMemory 오류의 위엄이 줄어들었습니다.  
+`XX:StringTableSize={size}`  로 String constant pool 크기를 지정할 수 있습니다.
+
+
+
 
 #### 3. 스택(Stack)
 
-스레드마다 생성이 되는 영역이고,  
-런타임 스택을 만들어 그 안에 메소드 호출을 스택 프레임이라 부르는 블록을 쌓습니다.  
-스레드가 종료되면 런타임 스택도 사라집니다.  
-메소드를 호출할 때마다 개별적으로 스택이 쌓입니다.
+Stack 영역에는 스레드마다 생성이 되는 영역이며, 메서드가 호출 될 때 마다 프레임이 생성됩니다. 각 프레임에는 세 부분이 포함됩니다.
+
+- 지역 변수 배열 – 메소드의 모든 지역 변수와 매개변수를 포함합니다.
+- 피연산자 스택 – 중간 계산 결과를 저장하기 위한 작업 공간으로 사용됩니다.
+- 프레임 데이터 – 부분 결과, 메서드의 반환 값, 예외 발생 시 해당 catch 블록 정보를 제공하는 *예외 테이블에 대한 참조를 저장하는 데 사용됩니다.*
 
 ![img](https://blog.kakaocdn.net/dn/5MCVy/btrxjnwSWpE/Zw9rtmthnyW3nChaDEbwd0/img.png)
-
-예로 들어 에러가 발생할 경우 위 사진처럼 메소드 호출 스택이 쌓여 보여 줍니다.
-
- 
+ 예로 들어 에러가 발생할 경우 위 사진처럼 메소드 호출 스택이 쌓여 보여 줍니다.
 
 #### 4. PC 레지스터(Program Counter Register)
 
@@ -355,9 +424,19 @@ new 키워드로 생성된 객체(Instance)를 저장 및 공유하는 영역입
 JIT 컴파일로 반복되는 코드를 모두 네이티브 코드로 바꿔 둡니다.  
 그다음부터 인터프리터는 네이티브 코드로 컴파일된 코드를 바로 사용하게 됩니다.
 
-#### 3. 가비지 컬렉터(Garbage Collector)
+#### 3. 가비지 컬렉터(Garbage Collector) 추가적으로 공부
 
-힙 영역에 있는 더 이상 참조되지 않는 객체를 모아서 제거를 합니다.
+가비지 컬렉터는 공통적으로 크게 2가지 작업을 합니다.
+
+1. Heap 내의 객체 중에서 garbage를 찾아냅니다.
+2. 찾아낸 garbage를 처리해서 Heap memory를 회수합니다.
+
+garbage를 판별하기 위해서 reacheabilty라는 개념을 사용하는데, 어떤 객체에 유효한 참조가 있으면 `reachable`
+없으면 `unreachable` 로 구별하고,  `unreacheable` 객체를 garbage로 간주하여 가비지 컬렉터를 수행합니다.
+
+
+
+
 
 
 
@@ -405,3 +484,16 @@ JVM과 핵심 라이브러리 및 자바 런타임 환경에서 사용하는 프
 JDK는 Java를 사용하기 위해 필요한 모든 기능(JRE + 개발 관련 도구들)을 갖춘 배포판입니다.  
 오라클은 자바 11부터는 JDK만 제공하고 있습니다.  
 모듈 시스템을 사용할 수 있어서 사용자가 JRE를 만들 수 있기 때문에 JRE를 따로 제공하지 않습니다.
+
+
+
+출처
+https://docs.oracle.com/en/java/javase/17/docs/specs/man/javac.html  
+https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.htm  
+https://docs.oracle.com/en/java/javase/17/docs/specs/man/javap.html  
+https://www.inflearn.com/course/the-java-java8   
+https://www.inflearn.com/course/the-java-code-manipulation   
+https://www.baeldung.com/java-string-pool  
+https://www.baeldung.com/java-string-constant-pool-heap-stack  
+https://docs.oracle.com/en/middleware/soa-suite/soa/12.2.1.4/administer/configuring-reference-configuration-domain.html#GUID-18F3C6CA-E0B5-4B41-BFF7-5138221F1007   
+https://dzone.com/articles/permgen-and-metaspace
