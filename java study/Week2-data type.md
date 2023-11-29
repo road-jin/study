@@ -174,31 +174,31 @@ Class<String> str = String.class;
 ```java
 public class Variables {
 	
-	static int classVariable;				// 클래스 변수 선언 (primitive type이라서 기본값 0)
-	static int classVariable2 = 2;  // 클래스 변수 선언 및 초기화(명시적 초기화)
-	static int classVariable3;			// 클래스 변수 선언 (primitive type이라서 기본값 0)
+	static int classVariable = 1;		// 클래스 변수 선언 (primitive type이라서 기본값 0)
+	static int classVariable2 = 2;      // 클래스 변수 선언 및 초기화(명시적 초기화)
+	static int classVariable3 = 2;		// 클래스 변수 선언 (primitive type이라서 기본값 0)
 	
 	static {
-		classVariable3 = 3;						// 클래스 초기화 블록으로 클래스 변수를 초기화 합니다.
+		classVariable3 = 3;				// 클래스 초기화 블록으로 클래스 변수를 초기화 합니다.
 	}
 	
-	int instanceVariable;						// 인스턴스 변수 선언 (primitive type이라서 기본값 0)
+	int instanceVariable;				// 인스턴스 변수 선언 (primitive type이라서 기본값 0)
 	int instanceVariable2 = 2;			// 인스턴스 변수 선언 및 초기화(명시적 초기화)
-	int instanceVariable3;					// 인스턴스 변수 선언 (primitive type이라서 기본값 0)
-	int instanceVariable4;					// 인스턴스 변수 선언 (primitive type이라서 기본값 0)
+	int instanceVariable3;				// 인스턴스 변수 선언 (primitive type이라서 기본값 0)
+	int instanceVariable4;				// 인스턴스 변수 선언 (primitive type이라서 기본값 0)
 	
 	{
-		instanceVariable3 = 3;				// 인스턴스 초기화 블록으로 인스턴스 변수를 초기화 합니다.
+		instanceVariable3 = 3;			// 인스턴스 초기화 블록으로 인스턴스 변수를 초기화 합니다.
 	}
 	
 	public Variables() {				
-		instanceVariable4 = 4;				// 생성자로 인스턴스 변수를 초기화 합니다.
+		instanceVariable4 = 4;			// 생성자로 인스턴스 변수를 초기화 합니다.
 	}
 	
 	
-	void foo(int num) {							// 매개 변수 선언
-		int variableA;								// 지역 변수 선언
-		variableA = 10;								// 지역 변수 초기화
+	void foo(int num) {					// 매개 변수 선언
+		int variableA;					// 지역 변수 선언
+		variableA = 10;					// 지역 변수 초기화
 		int variableB = variableA;		// 지역 변수 선언 및 초기화(명시적 초기)
 	}
 }

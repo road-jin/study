@@ -434,7 +434,7 @@ JIT 컴파일로 반복되는 코드를 모두 네이티브 코드로 바꿔 둡
 garbage를 판별하기 위해서 reacheabilty라는 개념을 사용하는데, 어떤 객체에 유효한 참조가 있으면 `reachable`
 없으면 `unreachable` 로 구별하고,  `unreacheable` 객체를 garbage로 간주하여 가비지 컬렉터를 수행합니다.
 
-
+이어서 더 해야함.
 
 
 
