@@ -123,6 +123,8 @@ HttpSecurity를 사용하여 authorizeHttpRequests() 메서드를 호출하여 �
 - anyRequest().authenticated() : 그 외의 모든 요청에 대해서 인증하도록 합니다.
 - anyRequest().denyAll() : 그 외의 모든 요청에 대해서 접근을 거부합니다.
 
+
+
 ------
 
 
@@ -455,6 +457,8 @@ Security 기본 값인 CSRF을 비활성화 해줍니다.
 인증 제공자는 UserDetailsService를 활용하여 Authentication을 반환합니다.   
 Authentication를 Security Contenxt에 저장하고 Authentication를 통해서 인증이 되었는지를 확인할 수 있습니다.
 
+
+
 ------
 
 
@@ -575,3 +579,68 @@ public class ProjectSecurityConfig {
 }
 ```
 
+
+
+------
+
+
+
+## Authentication Provider
+
+```java
+public interface AuthenticationProvider {
+
+    Authentication authenticate(Authentication authentication) throws AuthenticationException;
+
+    boolean supports(Class<?> authentication);
+}
+```
+
+- authenticate(Authentication authentication)
+    - authentication 객체를 이용하여 인증을 합니다.
+    - 성공 시 authentication 객체를 반환하고, 실패시 AuthenticationException 예외를 발생시킵니다.
+- supports(Class<?> authentication)
+    - 해당 authentication을 지원하는 인증 제공자인지 확인하는 메서드이며, 지원하는 경우  true, 아니면 false를 리턴합니다.
+
+
+
+### Custom
+
+```java
+@Component
+public class EazyBankUsernamePwdAuthenticationProvider implements AuthenticationProvider {
+
+	private final CustomerRepository customerRepository;
+	private final PasswordEncoder passwordEncoder;
+
+	public EazyBankUsernamePwdAuthenticationProvider(CustomerRepository customerRepository,
+		PasswordEncoder passwordEncoder) {
+		this.customerRepository = customerRepository;
+		this.passwordEncoder = passwordEncoder;
+	}
+
+	@Override
+	public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+		String username = authentication.getName();
+		String password = authentication.getCredentials().toString();
+		Customer customer = customerRepository.findByEmail(username)
+			.orElseThrow(() -> new UsernameNotFoundException("No user registered with this details!"));
+
+		if (passwordEncoder.matches(password, customer.getPwd())) {
+			List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority(customer.getRole()));
+			return new UsernamePasswordAuthenticationToken(username, password, authorities);
+		}
+
+		throw new BadCredentialsException("Invalid password!");
+	}
+
+	@Override
+	public boolean supports(Class<?> authentication) {
+		return UsernamePasswordAuthenticationToken.class.isAssignableFrom(authentication);
+	}
+}
+```
+
+![image-20240106204215048](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240106204215048.png)
+
+![image-20240106203734950](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240106203734950.png)
