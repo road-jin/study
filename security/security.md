@@ -815,3 +815,285 @@ public class CsrfCookieFilter extends OncePerRequestFilter {
     - 생성된 CSRF 토큰을 request Attribute에서 꺼내와서 Header 넣어주는 작업을 합니다.
 
         
+
+## Authoriztion
+
+권한 부여는 사용자 인증 후에 사용자가 가지고 있는 고유한 권한이나 역할을 가지고 있으며,  
+해당 역할이나 권한에 따라 접근할 수 있는 기능이 다릅니다.  
+또한 인증에 실패하면 401 에러가 발생하지만, 접근 할 수 없는 기능인 경우는 403 에러가 발생합니다.
+
+
+
+### GrantedAuthority interface
+
+```java
+public interface GrantedAuthority extends Serializable {
+
+	String getAuthority();
+}
+
+public final class SimpleGrantedAuthority implements GrantedAuthority {
+
+	private static final long serialVersionUID = SpringSecurityCoreVersion.SERIAL_VERSION_UID;
+
+	private final String role;
+
+	public SimpleGrantedAuthority(String role) {
+		Assert.hasText(role, "A granted authority textual representation is required");
+		this.role = role;
+	}
+
+	@Override
+	public String getAuthority() {
+		return this.role;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}
+		if (obj instanceof SimpleGrantedAuthority sga) {
+			return this.role.equals(sga.getAuthority());
+		}
+		return false;
+	}
+
+	@Override
+	public int hashCode() {
+		return this.role.hashCode();
+	}
+
+	@Override
+	public String toString() {
+		return this.role;
+	}
+
+}
+
+```
+
+권한 혹은 역할을 배정하고 싶은 사람은 GrantedAuthority을 구현한 SimpleGrantedAuthority의 생성자를 통하여   
+문자열의 형식으로 역할의 이름을 지정합니다.
+
+
+
+![image-20240107211444632](../../../../Users/minkyujin/Library/Application%20Support/typora-user-images/image-20240107211444632.png)
+Authentication, UserDetails 모두 GrantedAuthority 인터페이스를 필드로 참조하거나 사용하여 권한이나 역할을 가져오도록 하고 있습니다.
+
+
+
+### 사용자가 여러개의 권한(Authority)을 가지도록 설정
+
+```sql
+CREATE TABLE `authorities` (
+   `id` int NOT NULL AUTO_INCREMENT,
+   `customer_id` int NOT NULL,
+   `name` varchar(50) NOT NULL,
+   PRIMARY KEY (`id`),
+   KEY `customer_id` (`customer_id`),
+   CONSTRAINT `authorities_ibfk_1` FOREIGN KEY (`customer_id`) REFERENCES `customer` (`customer_id`)
+);
+
+INSERT INTO `authorities` (`customer_id`, `name`)
+VALUES (1, 'VIEWACCOUNT');
+
+INSERT INTO `authorities` (`customer_id`, `name`)
+VALUES (1, 'VIEWCARDS');
+
+INSERT INTO `authorities` (`customer_id`, `name`)
+VALUES (1, 'VIEWLOANS');
+
+INSERT INTO `authorities` (`customer_id`, `name`)
+VALUES (1, 'VIEWBALANCE');
+```
+
+```java
+@Entity
+@Table(name = "authorities")
+public class Authority {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
+
+	private String name;
+
+	@ManyToOne
+	@JoinColumn(name = "customer_id")
+	private Customer customer;
+
+	public Long getId() {
+		return id;
+	}
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public Customer getCustomer() {
+		return customer;
+	}
+
+	public void setCustomer(Customer customer) {
+		this.customer = customer;
+	}
+}
+
+@Entity
+public class Customer {
+
+	...
+
+	@JsonIgnore
+	@OneToMany(mappedBy="customer", fetch= FetchType.EAGER)
+	private Set<Authority> authorities;
+
+  ...
+
+	public Set<Authority> getAuthorities() {
+		return authorities;
+	}
+
+	public void setAuthorities(Set<Authority> authorities) {
+		this.authorities = authorities;
+	}
+}
+
+@Component
+public class EazyBankUsernamePwdAuthenticationProvider implements AuthenticationProvider {
+
+	...
+
+	@Override
+	public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+		String username = authentication.getName();
+		String password = authentication.getCredentials().toString();
+		Customer customer = customerRepository.findByEmail(username)
+			.orElseThrow(() -> new UsernameNotFoundException("No user registered with this details!"));
+
+		if (passwordEncoder.matches(password, customer.getPwd())) {
+			return new UsernamePasswordAuthenticationToken(username, password,   getGrantedAuthorities(customer.getAuthorities()));
+		}
+
+		throw new BadCredentialsException("Invalid password!");
+	}
+
+	private List<GrantedAuthority> getGrantedAuthorities(Set<Authority> authorities) {
+		return authorities.stream()
+			.map(authority -> (GrantedAuthority) new SimpleGrantedAuthority(authority.getName()))
+			.toList();
+	}
+
+	...
+}
+
+```
+
+authorities 테이블을 만들어서 권한들을 Customer가 권한들을 가질 수 있도록 하였습니다.  
+provider를 수정하여 customer.getAuthorities() 메서드로 현재 사용자의 권한들을 조회할 수 있도록 하고  
+GrantedAuthority 변환하여 Authentication에 권한들을 넣을 수 있도록 하였습니다.
+
+
+
+### 권환(Authority) 설정
+
+```java
+@Configuration
+public class ProjectSecurityConfig {
+
+	@Bean
+	SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.securityContext(context -> context.requireExplicitSave(false))
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.ALWAYS))
+			.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(csrf -> csrf.ignoringRequestMatchers("/contact", "/register")
+				.csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+			.authorizeHttpRequests(requests -> requests
+				.requestMatchers("/myAccount").hasAuthority("VIEWACCOUNT")
+				.requestMatchers("/myBalance").hasAnyAuthority("VIEWACCOUNT", "VIEWBALANCE")
+				.requestMatchers("/myLoans").hasAuthority("VIEWLOANS")
+				.requestMatchers("/myCards").hasAuthority("VIEWCARDS")
+        //.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+}
+```
+
+권한 설정을 하는 경우에는 인증 후에 권한을 확인 하기 때문에 authenticated URL에 빠져도 됩니다.
+
+- hasAuthority() : 특정 권한을 가진 사용자만 해당 API를 접근할 수 있도록 합니다.
+- hasAnyAuthority() : 여러가지 권한 중 하나라도 가지고 있는 사용자라면 해당  API를 접근할 수 있도록 합니다.
+
+
+
+### 권한(Authority)과 역할(Role)의 차이
+
+권한은 특정 API 및 하나의 작업에 대해서만 접근 제한 하는 것을 의미하며,   
+역할은 권한 이나 작업의 그룹을 나타내며 그룹에 대해서 접근 제한 하는 것을 의미합니다.
+
+
+
+### 역할(Role) 설정
+
+```SQL
+DELETE FROM `authorities`;
+
+INSERT INTO `authorities` (`customer_id`, `name`)
+VALUES (1, 'ROLE_USER');
+
+INSERT INTO `authorities` (`customer_id`, `name`)
+VALUES (1, 'ROLE_ADMIN');
+```
+
+```java
+@Configuration
+public class ProjectSecurityConfig {
+
+	@Bean
+	SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.securityContext(context -> context.requireExplicitSave(false))
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.ALWAYS))
+			.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(csrf -> csrf.ignoringRequestMatchers("/contact", "/register")
+				.csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+			.authorizeHttpRequests(requests -> requests
+				/*.requestMatchers("/myAccount").hasAuthority("VIEWACCOUNT")
+				.requestMatchers("/myBalance").hasAnyAuthority("VIEWACCOUNT", "VIEWBALANCE")
+				.requestMatchers("/myLoans").hasAuthority("VIEWLOANS")
+				.requestMatchers("/myCards").hasAuthority("VIEWCARDS")*/
+				.requestMatchers("/myAccount").hasRole("USER")
+				.requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+				.requestMatchers("/myLoans").hasRole("USER")
+				.requestMatchers("/myCards").hasRole("USER")
+				.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+}
+```
+
+hasRole(), hasAnyRole()는 `ROLE_` 이 앞에 무조건 붙긴 때문에 ROLE_ 뒷 문자열만 적으면 됩니다.
+
+- hasRole() : 특정 역할을 가진 사용자만 해당 API를 접근할 수 있도록 합니다.
+- hasAnyRole() : 여러가지 역할 중 하나라도 가지고 있는 사용자라면 해당  API를 접근할 수 있도록 합니다.
