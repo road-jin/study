@@ -644,3 +644,174 @@ public class EazyBankUsernamePwdAuthenticationProvider implements Authentication
 ![image-20240106204215048](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240106204215048.png)
 
 ![image-20240106203734950](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240106203734950.png)
+
+------
+
+
+
+## CORS
+
+![image-20240107153723666](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240107153723666.png)
+
+Cross Origin Resource Sharing의 약자로 보안 상의 이유로 브라우저에서 다른 출처에 대해서 통신을 하지 못하도록 되어 있지만,  
+CORS 설정을 통하여 출처가 다른 서버간의 리소스 공유를 허용하도록 합니다.
+
+**출처**
+
+HTTP scheme(HTTP, HTTPS), domain, port 조합을 출처라고  합니다.
+
+
+
+### 설정
+
+```java
+@Configuration
+public class ProjectSecurityConfig {
+
+	@Bean
+	SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(AbstractHttpConfigurer::disable)
+			.authorizeHttpRequests(requests -> requests
+				.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+
+	private CorsConfigurationSource configurationSource() {
+		CorsConfiguration configuration = new CorsConfiguration();
+		configuration.setAllowedOrigins(List.of("http://localhost:4200"));
+		configuration.setAllowedMethods(List.of(CorsConfiguration.ALL));
+		configuration.setAllowCredentials(true);
+		configuration.setAllowedHeaders(List.of(CorsConfiguration.ALL));
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/**", configuration);
+		return  source;
+	}
+}
+```
+
+**주요 메서드**
+
+- CorsConfiguration : CORS를 설정하는 클래스입니다.
+    - setAllowedOrigins() : CORS를 허용할 출처들을 설정합니다.
+    - setAllowedMethods() : CORS를 허용할 HTTP Method를 설정합니다.
+    - setAllowCredentials() : 사용자 인증이 지원되는 여부를 설정하며, 인증 정보들을 넘기고 받는 것을 의미합니다.
+    - setAllowedHeaders() : CORS를 허용할 요청 헤더를 설정합니다.
+    - setExposedHeaders() : CORS를 허용할 응답 헤더를 설정합니다.
+- UrlBasedCorsConfigurationSource : URL 경로 패턴을 기반으로 CORS를 허용 하도록 하는 클래스입니다.
+    - registerCorsConfiguration() : URL 패턴과, CorsConfiguration를 받아 설정합니다.
+
+
+
+------
+
+
+
+## CSRF
+
+![image-20240107162901135](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240107162901135.png)
+
+![image-20240107162914271](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240107162914271.png)
+
+Cross-site request forgery 약자로 웹사이트 취약점 공격의 하나입니다.  
+사용자가 자신의 의지와는 무관하게 공격자가 의도한 행위(수정, 삭제, 등록 등)를 특정 웹사이트에 요청하게 하는 공격을 말합니다.  
+Spring security는 기본적으로 GET을 제외한 모든 URL 요청에세 대해서 CSRF 보안 설정이 되어 있습니다.
+
+**예시**
+
+1. netflix.com 서버에 로그인하여 인증 후 넷플릭스 서버는 쿠키를 생성하여 사용자의 인증을 여러번 묻지 않도록 합니다.
+2. 공격자는 링크를 클릭 시 넷플릭스에 사용자 정보를 변경하게 하는 공격용 URL을 준비합니다.
+3. 사용자는 공격용 URL를 클릭하면, 쿠키를 통하여 사용자의 인증을 하기 때문에 공격자가 이용자의 넥플릭스 사용자 정보를 수정하게 됩니다.
+
+
+
+### 해결 방법
+
+![](https://docs.spring.io/spring-security/reference/_images/servlet/exploits/csrf-processing.png)
+
+서버는 무작위 생성 값이 있는 CSRF 토큰을 생성하여 클라이언트에 준 후   
+HTTP 요청이 있을 때 마다  요청에서 온 CSRF 토큰과 서버의  CSRF 토큰을 비교합니다.  
+값이 일치하지 않으면 HTTP 요청이 거부됩니다.
+
+
+
+### 설정
+
+```java
+@Configuration
+public class ProjectSecurityConfig {
+
+	@Bean
+	SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.securityContext(context -> context.requireExplicitSave(false))
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.ALWAYS))
+			.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(csrf -> csrf.ignoringRequestMatchers("/contact", "/register")
+				.csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+			.authorizeHttpRequests(requests -> requests
+				.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+}
+
+public class CsrfCookieFilter extends OncePerRequestFilter {
+
+	@Override
+	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+		FilterChain filterChain) throws ServletException, IOException {
+		CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+
+		if (Objects.nonNull(csrfToken.getHeaderName())) {
+			response.setHeader(csrfToken.getHeaderName(), csrfToken.getToken());
+		}
+
+		filterChain.doFilter(request, response);
+	}
+}
+```
+
+- ProjectSecurityConfig
+
+    - csrf()
+        - csrfTokenRequestHandler() : csrf 토큰 처리 및 HTTP 헤더 또는 요청 파라미터에서 확인하는 역할을 설정합니다.
+            - CsrfTokenRequestAttributeHandler
+                - CSRF 토큰을  HttpServletRequest의 Attribute로 사융할 수 있게 합니다.
+                - 요청에서 토큰 값을 요청 헤더(X-CSRF-TOKEN 또는 X-XSRF-TOKEN 중 하나)   
+                    또는 요청 파라미터(기본적으로 _csrf)로 확인합니다.
+            - XorCsrfTokenRequestAttributeHandler
+                - CsrfTokenRequestAttributeHandler을 확장하였으며, BREACH 공격에 대해 보안 대책을 추가하였습니다.
+            - Customizing 
+                - CsrfTokenRequestHandler 인터페이스를 구현하여 커스텀 할 수 있습니다.
+        - csrfTokenRepository() : 토큰을 저장, 생성, 조회하기 위한 토큰 저장소를 설정합니다.
+            - HttpSessionCsrfTokenRepository
+                - CSRF 토큰을 HttpSession을 이용하는 저장소입니다.
+                - 기본적으로 X-CSRF-TOKEN이라는 HTTP 요청 헤더 또는 요청 매개변수 _csrf에서 토큰을 읽습니다.
+            - CookieCsrfTokenRepository
+                - 쿠키를 사용하여 자바스크립트 기반 애플리케이션에서 CSRF 토큰을 지속시킬 수 있습니다.
+                - XSRF-TOKEN이라는 쿠키에 쓰고 기본적으로 X-XSRF-TOKEN 또는   
+                    요청 매개변수 _csrf라는 HTTP 요청 헤더에서 쿠키를 읽습니다.
+            - Customizing
+                - CsrfTokenRepository 인터페이스를 구현하여 커스텀 할 수 있습니다.
+        - ignoringRequestMatchers() :  메서드를 통하여 csrf 보안 설정을 적용하지 않아도 되는 URL들을 명시합니다.
+    - sessionManagement()
+        - sessionCreationPolicy() : 세션 생성 정책을 설정합니다.
+    - addFilterAfter() : 두번째 인자의 필터 이후에 첫번째 인자 필터가 실행하도록 해주는 설정입니다.
+        - BasicAuthenticationFilter가 로그인 동작이 하기 때문에 로그인 동작이 완료 된 후에 CSRF 토큰이 생성됩니다.
+
+- CsrfCookieFilter
+
+    - OncePerRequestFilter 확장하여 구현하였으며, OncePerRequestFilter는 요청 당 한번만 처리하는 필터입니다.
+
+    - 생성된 CSRF 토큰을 request Attribute에서 꺼내와서 Header 넣어주는 작업을 합니다.
+
+        
