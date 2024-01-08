@@ -781,7 +781,6 @@ public class CsrfCookieFilter extends OncePerRequestFilter {
 ```
 
 - ProjectSecurityConfig
-
     - csrf()
         - csrfTokenRequestHandler() : csrf 토큰 처리 및 HTTP 헤더 또는 요청 파라미터에서 확인하는 역할을 설정합니다.
             - CsrfTokenRequestAttributeHandler
@@ -807,14 +806,15 @@ public class CsrfCookieFilter extends OncePerRequestFilter {
         - sessionCreationPolicy() : 세션 생성 정책을 설정합니다.
     - addFilterAfter() : 두번째 인자의 필터 이후에 첫번째 인자 필터가 실행하도록 해주는 설정입니다.
         - BasicAuthenticationFilter가 로그인 동작이 하기 때문에 로그인 동작이 완료 된 후에 CSRF 토큰이 생성됩니다.
-
 - CsrfCookieFilter
-
     - OncePerRequestFilter 확장하여 구현하였으며, OncePerRequestFilter는 요청 당 한번만 처리하는 필터입니다.
-
     - 생성된 CSRF 토큰을 request Attribute에서 꺼내와서 Header 넣어주는 작업을 합니다.
 
-        
+
+
+------
+
+
 
 ## Authoriztion
 
@@ -1097,3 +1097,406 @@ hasRole(), hasAnyRole()는 `ROLE_` 이 앞에 무조건 붙긴 때문에 ROLE_ �
 
 - hasRole() : 특정 역할을 가진 사용자만 해당 API를 접근할 수 있도록 합니다.
 - hasAnyRole() : 여러가지 역할 중 하나라도 가지고 있는 사용자라면 해당  API를 접근할 수 있도록 합니다.
+
+
+
+------
+
+
+
+## Custom Filter
+
+![image-20240107230635521](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240107230635521.png)
+
+```java
+@SpringBootApplication
+@EnableWebSecurity(debug = true)
+public class ProjectSecurityConfig {
+
+	...
+}
+/*
+Security filter chain: [
+  DisableEncodeUrlFilter
+  ForceEagerSessionCreationFilter
+  ForceEagerSessionCreationFilter
+  WebAsyncManagerIntegrationFilter
+  SecurityContextPersistenceFilter
+  HeaderWriterFilter
+  CorsFilter
+  CsrfFilter
+  LogoutFilter
+  UsernamePasswordAuthenticationFilter
+  DefaultLoginPageGeneratingFilter
+  DefaultLogoutPageGeneratingFilter
+  BasicAuthenticationFilter
+  CsrfCookieFilter
+  RequestCacheAwareFilter
+  SecurityContextHolderAwareRequestFilter
+  AnonymousAuthenticationFilter
+  SessionManagementFilter
+  ExceptionTranslationFilter
+  AuthorizationFilter
+]
+*/
+```
+
+```yaml
+logging:
+  level:
+    org.springframework.security.web.FilterChainProxy: DEBUG
+```
+
+@EnableWebSecurity 어노테이션과 logging 설정으로 Security 디버깅을 할 수 있으며,
+스프링 시큐리티는 위와 같이 19개 정도의 필터를 사용하고 있습니다.
+
+**주의 사항**
+[현재 spring boot 3.2.1에서는 버그로 인하여 securityFilterChain Bean 생성이 되지 않습니다.](https://stackoverflow.com/questions/77715151/spring-boot3-2-1-spring-security-config6-2-1-upgrade-issue-error-creating-b)
+spring boot 3.20으로 다운그레이드 시 정상적으로 동작됩니다.
+
+
+
+### Filter
+
+```tex
+// 흐름
+HTTP 요청 → WAS → 필터 → 서블릿 → 컨트롤러
+
+// 제한
+HTTP 요청 → WAS → 필터(서블릿 호출 x)
+
+// 체인
+HTTP 요청 → WAS → 필터 → 필터2 → 필터3 → 서블릿 → 컨트롤러
+출처: https://roadj.tistory.com/15 [나의 구름낀 조각들:티스토리]
+```
+
+서블릿이 지원하는 기능으로 서블릿이 호출하기 전에 필터 로직이 실행되며,  
+특정 URL 패턴을 사용하여 특정 URL 요청에 대하여 적용할 수 있습니다.  
+필터는 로직에 의해서 적절하지 않은 요청이라고 판단할 경우 서블릿 호출을 하지 않습니다.  
+그리고 필터는 체인으로 구성되는데, 중간에 필터를 자유롭게 추가할 수 있습니다.  
+참고로 서블릿은 spring의 DispatcherServlet 입니다.
+
+```java
+public interface Filter {
+
+    public default void init(FilterConfig filterConfig) throws ServletException {}
+
+    public void doFilter(ServletRequest request, ServletResponse response,
+            FilterChain chain) throws IOException, ServletException;
+
+    public default void destroy() {}
+}
+```
+
+필터 인터페이스를 구현하고 등록하면 서블릿 컨테이너가 필터를 싱글톤 객체로 생성하고, 관리합니다.
+
+- init : 필터 초기화 메서드, 서블릿 컨테이너가 생성될 때 호출합니다.
+- doFilter : 요청이 올 떄 마다 해당 메서드가 호출됩니다.
+    - ServletRequest : EndPoint로 부터 오는  HTTP 요청입니다.
+    - ServletResponse : EndPoint로 보내는 HTTP 응답입니다.
+    - FilterChain : 정의된 순서대로 실행되는 필터들의 집합입니다.
+- destory : 필터 종료 메서드, 서블릿 컨테이너가 종료될 때 호출합니다.
+
+
+
+### Spring Security에 Custom Filter 주입 방법
+
+HttpSecurity 클래스의 addFilterBefore, addFilterAfter, addFilterAt 메서드를 통해서 Custom Filter를 주입할 수 있습니다.
+
+**addFilterBefore(filter, class)**
+
+![image-20240108112949980](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240108112949980.png)
+
+```java
+public class RequestValidationBeforeFilter implements Filter {
+
+	public static final String AUTHENTICATION_SCHEME_BASIC = "Basic";
+	private Charset credentialsCharset = StandardCharsets.UTF_8;
+
+	@Override
+	public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws
+		IOException,
+		ServletException {
+		HttpServletRequest req = (HttpServletRequest)servletRequest;
+		HttpServletResponse res = (HttpServletResponse)servletResponse;
+		String header = req.getHeader(AUTHORIZATION);
+
+		if (Objects.nonNull(header)) {
+			header = header.trim();
+
+			if (StringUtils.startsWithIgnoreCase(header, AUTHENTICATION_SCHEME_BASIC)) {
+				try {
+					byte[] base64Token = header.substring(6).getBytes(StandardCharsets.UTF_8);
+					byte[] decoded = Base64.getDecoder().decode(base64Token);
+					String token = new String(decoded, credentialsCharset);
+					int delim = token.indexOf(":");
+					
+					if (delim == -1) {
+						throw new BadCredentialsException("Invalid basic authentication token");
+					}
+					
+					String email = token.substring(0, delim);
+					
+					if (email.toLowerCase().contains("test")) {
+						res.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+						return;
+					}
+				} catch (IllegalArgumentException e) {
+					throw new BadCredentialsException("Failed to decode basic authentication token");
+				}
+			}
+		}
+
+		filterChain.doFilter(servletRequest, servletResponse);
+	}
+}
+
+@Configuration
+@EnableWebSecurity(debug = true)
+public class ProjectSecurityConfig {
+
+	@Bean
+	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.securityContext(context -> context.requireExplicitSave(false))
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.ALWAYS))
+			.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(csrf -> csrf.ignoringRequestMatchers("/contact", "/register")
+				.csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.addFilterBefore(new RequestValidationBeforeFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+			.authorizeHttpRequests(requests -> requests
+				.requestMatchers("/myAccount").hasRole("USER")
+				.requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+				.requestMatchers("/myLoans").hasRole("USER")
+				.requestMatchers("/myCards").hasRole("USER")
+				.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+  
+  ...
+}
+/*
+Security filter chain: [
+  DisableEncodeUrlFilter
+  ForceEagerSessionCreationFilter
+  ForceEagerSessionCreationFilter
+  WebAsyncManagerIntegrationFilter
+  SecurityContextPersistenceFilter
+  HeaderWriterFilter
+  CorsFilter
+  CsrfFilter
+  LogoutFilter
+  UsernamePasswordAuthenticationFilter
+  DefaultLoginPageGeneratingFilter
+  DefaultLogoutPageGeneratingFilter
+  RequestValidationBeforeFilter
+  BasicAuthenticationFilter
+  CsrfCookieFilter
+  RequestCacheAwareFilter
+  SecurityContextHolderAwareRequestFilter
+  AnonymousAuthenticationFilter
+  SessionManagementFilter
+  ExceptionTranslationFilter
+  AuthorizationFilter
+]
+*/
+```
+
+Anguler에서 Authorization Header에 `Basic email:password` 로 넣어서 서버에 보내주며,   
+`email:password` base64로 encoding 되어 있습니다.  
+RequestValidationBeforeFilter 클래스는 Authorization Header에 값이 제대로 있는지 검증하는 필터입니다.  
+이메일에 test가 포함될 시에는 응답 메시지에 400 상태코드를 반환하게 합니다.   
+addFilterBefore(filter, class) 메서드로 두번째 인자 클래스 이전에 해당 필터가 실행 될 수 있도록 합니다.
+
+
+
+**addFilterAfter(filter, class)**
+
+![image-20240108113003569](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240108113003569.png)
+
+```java
+public class AuthoritiesLoggingAfterFilter implements Filter {
+
+	private final Logger LOG =
+		Logger.getLogger(AuthoritiesLoggingAfterFilter.class.getName());
+
+	@Override
+	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+		throws IOException, ServletException {
+
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		if (null != authentication) {
+			LOG.info("User " + authentication.getName() + " is successfully authenticated and "
+				+ "has the authorities " + authentication.getAuthorities().toString());
+		}
+		chain.doFilter(request, response);
+	}
+
+}
+
+@Configuration
+@EnableWebSecurity(debug = true)
+public class ProjectSecurityConfig {
+
+	@Bean
+	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.securityContext(context -> context.requireExplicitSave(false))
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.ALWAYS))
+			.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(csrf -> csrf.ignoringRequestMatchers("/contact", "/register")
+				.csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.addFilterBefore(new RequestValidationBeforeFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new AuthoritiesLoggingAfterFilter(), BasicAuthenticationFilter.class)
+			.authorizeHttpRequests(requests -> requests
+				.requestMatchers("/myAccount").hasRole("USER")
+				.requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+				.requestMatchers("/myLoans").hasRole("USER")
+				.requestMatchers("/myCards").hasRole("USER")
+				.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+  
+  ...
+}
+
+/*
+Security filter chain: [
+  DisableEncodeUrlFilter
+  ForceEagerSessionCreationFilter
+  ForceEagerSessionCreationFilter
+  WebAsyncManagerIntegrationFilter
+  SecurityContextPersistenceFilter
+  HeaderWriterFilter
+  CorsFilter
+  CsrfFilter
+  LogoutFilter
+  UsernamePasswordAuthenticationFilter
+  DefaultLoginPageGeneratingFilter
+  DefaultLogoutPageGeneratingFilter
+  RequestValidationBeforeFilter
+  BasicAuthenticationFilter
+  CsrfCookieFilter
+  AuthoritiesLoggingAfterFilter
+  RequestCacheAwareFilter
+  SecurityContextHolderAwareRequestFilter
+  AnonymousAuthenticationFilter
+  SessionManagementFilter
+  ExceptionTranslationFilter
+  AuthorizationFilter
+]
+*/
+```
+
+LoggingFilter를 추가하여 어떤 유저가 인증이 성공적이고, 해당 유저는 어떠한 권한들을 가졌는지 로깅하는 필터입니다.  
+addFilterAfter(filter, class) 메서드로 두번째 인자 클래스 이후에 해당 필터가 실행 될 수 있도록합니다.
+
+
+
+**addFilterAt(filter, class)**
+
+![image-20240108113228410](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240108113228410.png)
+
+```java
+public class AuthoritiesLoggingAtFilter implements Filter {
+
+	private final Logger LOG = Logger.getLogger(AuthoritiesLoggingAtFilter.class.getName());
+
+	@Override
+	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+		throws IOException, ServletException {
+		LOG.info("Authentication Validation is in progress");
+		chain.doFilter(request, response);
+	}
+
+}
+
+@Configuration
+@EnableWebSecurity(debug = true)
+public class ProjectSecurityConfig {
+
+	@Bean
+	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.securityContext(context -> context.requireExplicitSave(false))
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.ALWAYS))
+			.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(csrf -> csrf.ignoringRequestMatchers("/contact", "/register")
+				.csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.addFilterBefore(new RequestValidationBeforeFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new AuthoritiesLoggingAfterFilter(), BasicAuthenticationFilter.class)
+			.addFilterAt(new AuthoritiesLoggingAtFilter(), BasicAuthenticationFilter.class)
+			.authorizeHttpRequests(requests -> requests
+				.requestMatchers("/myAccount").hasRole("USER")
+				.requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+				.requestMatchers("/myLoans").hasRole("USER")
+				.requestMatchers("/myCards").hasRole("USER")
+				.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+  
+  ...
+    
+}
+/*
+Security filter chain: [
+  DisableEncodeUrlFilter
+  ForceEagerSessionCreationFilter
+  ForceEagerSessionCreationFilter
+  WebAsyncManagerIntegrationFilter
+  SecurityContextPersistenceFilter
+  HeaderWriterFilter
+  CorsFilter
+  CsrfFilter
+  LogoutFilter
+  UsernamePasswordAuthenticationFilter
+  DefaultLoginPageGeneratingFilter
+  DefaultLogoutPageGeneratingFilter
+  RequestValidationBeforeFilter
+  AuthoritiesLoggingAtFilter
+  BasicAuthenticationFilter
+  CsrfCookieFilter
+  AuthoritiesLoggingAfterFilter
+  RequestCacheAwareFilter
+  SecurityContextHolderAwareRequestFilter
+  AnonymousAuthenticationFilter
+  SessionManagementFilter
+  ExceptionTranslationFilter
+  AuthorizationFilter
+]
+*/
+```
+
+addFilterAt(filter, class) 메서드로 두번째 인자 클래스 이전 이나 이후 둘 중 해당 필터가 무작위 순서로 실행됩니다.
+따라서 addFilterAt 행동에 대해서 매우 주의해야합니다.
+
+
+
+### Spring이 제공하는 추상 클래스
+
+Custom Filter를 만들기 전에 Spring이 프로그래머에게 필요한 기능들을 미리 만들어서 보다 편하게 Filter를 만들 수 있드록 하는 추상 클래스입니다.
+
+**OncePerRequestFilter**
+
+필터가 반드시 요청 당 한 번만 실행되어야 하는 경우에는 사용하는 추상 클래스입니다.
+
+
+
+**GenericFilterBean**
+
+외부 환경 변수 및 서블릿 컨텍스트 매개변수를 제공하는 추상 클래스입니다.
