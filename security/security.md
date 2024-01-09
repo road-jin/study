@@ -1500,3 +1500,220 @@ Custom Filter를 만들기 전에 Spring이 프로그래머에게 필요한 기�
 **GenericFilterBean**
 
 외부 환경 변수 및 서블릿 컨텍스트 매개변수를 제공하는 추상 클래스입니다.
+
+
+
+------
+
+
+
+## JWT를 사용한 토큰 기반 인증
+
+### JWT
+
+![image-20240108211050632](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240108211050632.png)
+
+정보를 JSON으로 안전하게 전송하기 위한 간결하고 독립적인 방법을 정의하는 개방형 표준(RFC 7519)입니다.
+해당 정보는 디지털 서명이 되어 있어 신뢰할 수 있습니다.
+
+**구조**
+
+{Header}.{Payload}.{Signature} 로 되어 있습니다.
+
+- Header : JWT의 서명 알고리즘과 유형으로 되어 있으며, Base64로 인코딩되어 있습니다.
+- Payload : Claim(추가 데이터)를 포함하며, 등록, 공개 및 비공개 클레임 세가지 유형이 있습니다.
+    - Registered Claims : 이미 공통적으로 정의된 클레임이며, 의무적으로 사용하거나 필수 사항은 아닙니다.
+        - iss(Issuer) Claim : 발급자를 나타냅니다.
+        - sub(Subject) Claim : 주제를 나타냅니다.
+        - aud(Audience) Claim : 수신자를 나타냅니다.
+        - exp(Expiration Time) Claim : 만료 시간을 나타냅니다. 현재 시간보다 커야 되며, NumbericDate(숫자)여야 합니다.
+        - nbf(Not Before) Claim : NumbericDate(숫자)여야 합니다. 해당 날짜가 지나기 전까지는 토큰이 처리되지 않습니다.
+        - iat(Issued At) Claim : 발행 시간을 나타냅니다. NumbericDate(숫자)여야 합니다.
+        - jti(JWT ID) Claim : jwt의 고유 식별자를 나타냅니다.
+    - Public Claims : 충돌 방지를 위해 [JSON 웹 토큰 레지스트리](https://www.iana.org/assignments/jwt/jwt.xhtml)에 정의된 클레임을 사용하거나, URI 형식의 키를 지정하여 사용합니다.
+    - Private Claims : 사용에 동의한 당사자 간에 정보를 공유하기 위해 커스텀 클레임으로 등록되거나 공개된 클레임 아닙니다.
+- Signature : 서명 부분을 생성하려면 인코딩된 Header, 인코딩 된 Payload, 비밀키를 가지고서 Header에 지정된 알고리즘으로 생성합니다.
+    - 알고리즘이 HMAC SHA256 일 경우 다음과 같습니다.  
+        HMACSHA256(base64UrlEncode(header) + "." +  base64UrlEncode(payload),  secret)
+
+### JWT 사용
+
+```java
+<gradle.build>
+  
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'com.eazybytes'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    sourceCompatibility = '17'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
+
+    runtimeOnly 'com.mysql:mysql-connector-j'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.3'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+public interface SecurityConstants {
+
+	public static final String JWT_KEY = "jxgEQeXHuPq8VdbyYFNkANdudQ53YUn4";
+	public static final String JWT_HEADER = "Authorization";
+
+}
+
+public class JWTTokenGeneratorFilter extends OncePerRequestFilter {
+
+	@Override
+	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+		FilterChain filterChain) throws ServletException, IOException {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+		if (Objects.nonNull(authentication)) {
+			Date now = new Date();
+			SecretKey key = Keys.hmacShaKeyFor(SecurityConstants.JWT_KEY.getBytes(StandardCharsets.UTF_8));
+			String jwt = Jwts.builder()
+				.setIssuer("Eazy Bank")
+				.setSubject("JWT Token")
+				.claim("username", authentication.getName())
+				.claim("authorities", populateAuthorities(authentication.getAuthorities()))
+				.setIssuedAt(now)
+				.setExpiration(new Date(now.getTime() + 30_000_000))
+				.signWith(key).compact();
+			response.setHeader(SecurityConstants.JWT_HEADER, jwt);
+		}
+
+		filterChain.doFilter(request, response);
+	}
+
+	@Override
+	protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+		return !request.getServletPath().equals("/user");
+	}
+
+	private String populateAuthorities(Collection<? extends GrantedAuthority> collection) {
+		Set<String> authoritiesSet = new HashSet<>();
+		for (GrantedAuthority authority : collection) {
+			authoritiesSet.add(authority.getAuthority());
+		}
+		return String.join(",", authoritiesSet);
+	}
+}
+
+@Configuration
+@EnableWebSecurity(debug = true)
+public class ProjectSecurityConfig {
+
+	@Bean
+	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+			.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(csrf -> csrf.ignoringRequestMatchers("/contact", "/register")
+				.csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.addFilterBefore(new RequestValidationBeforeFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new AuthoritiesLoggingAfterFilter(), BasicAuthenticationFilter.class)
+			.addFilterAt(new AuthoritiesLoggingAtFilter(), BasicAuthenticationFilter.class)
+      .addFilterAfter(new JWTTokenGeneratorFilter(), BasicAuthenticationFilter.class)
+      .addFilterBefore(new JWTTokenValidatorFilter(), BasicAuthenticationFilter.class)
+			.authorizeHttpRequests(requests -> requests
+				.requestMatchers("/myAccount").hasRole("USER")
+				.requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+				.requestMatchers("/myLoans").hasRole("USER")
+				.requestMatchers("/myCards").hasRole("USER")
+				.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+
+	private CorsConfigurationSource configurationSource() {
+		CorsConfiguration configuration = new CorsConfiguration();
+		configuration.setAllowedOrigins(List.of("http://localhost:4200"));
+		configuration.setAllowedMethods(List.of(CorsConfiguration.ALL));
+		configuration.setAllowCredentials(true);
+		configuration.setAllowedHeaders(List.of(CorsConfiguration.ALL));
+		configuration.setExposedHeaders(List.of("Authorization"));
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/**", configuration);
+		return  source;
+	}
+  
+  ...
+}
+
+public class JWTTokenValidatorFilter extends OncePerRequestFilter {
+
+	@Override
+	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+		throws ServletException, IOException {
+		String jwt = request.getHeader(SecurityConstants.JWT_HEADER);
+		if (Objects.nonNull(jwt)) {
+			try {
+				SecretKey key = Keys.hmacShaKeyFor(SecurityConstants.JWT_KEY.getBytes(StandardCharsets.UTF_8));
+				Claims claims = Jwts.parser()
+					.setSigningKey(key)
+					.build()
+					.parseClaimsJws(jwt)
+					.getBody();
+				String username = String.valueOf(claims.get("username"));
+				String authorities = (String) claims.get("authorities");
+				Authentication auth = new UsernamePasswordAuthenticationToken(username, null,
+					AuthorityUtils.commaSeparatedStringToAuthorityList(authorities));
+				SecurityContextHolder.getContext().setAuthentication(auth);
+			} catch (Exception e) {
+				throw new BadCredentialsException("Invalid Token received!");
+			}
+
+		}
+		filterChain.doFilter(request, response);
+	}
+
+	@Override
+	protected boolean shouldNotFilter(HttpServletRequest request) {
+		return request.getServletPath().equals("/user");
+	}
+}
+```
+
+- gradle.build
+    -  jwt 사용을 위해 jjwt 관련한 라이브러리 의존성을 추가하였습니다.
+- SecurityConstants
+    - 시큐리티에 대한 상수 모음 인터페이스
+    - JWT_KEY : JWT 서명을 위한 비밀키
+- JWTTokenGeneratorFilter
+    - JWT를 생성하기 위한 필터
+    - OncePerRequestFilter 상속 받아 요청당 한번만 실행됩니다.
+    - shouldNotFilter 메서드를 재정의하여 USER URI 이외에는 해당 필터가 실행되지 않도록 설정합니다.
+- JWTTokenValidatorFilter
+    - JWT를 검증하기 위한 필터
+    - OncePerRequestFilter 상속 받아 요청당 한번만 실행됩니다.
+    - shouldNotFilter 메서드를 재정의하여 USER URI 이외에는 해당 필터가 실행 되도록 설정합니다.
+- ProjectSecurityConfig
+    - SessionCreationPolicy.STATELESS 설정으로 Session을 설정하지 않도록 합니다.
+    - BasicAuthenticationFilter 이후에 JWTTokenGeneratorFilter 실행 되도록 설정합니다
+
