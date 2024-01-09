@@ -1717,3 +1717,160 @@ public class JWTTokenValidatorFilter extends OncePerRequestFilter {
     - SessionCreationPolicy.STATELESS 설정으로 Session을 설정하지 않도록 합니다.
     - BasicAuthenticationFilter 이후에 JWTTokenGeneratorFilter 실행 되도록 설정합니다
 
+
+
+------
+
+
+
+## Method Level Security
+
+메서드에 어노테이션을 붙여 권한 검증을 부여할 수 있도록 합니다.  
+`@EnableMethodSecurity` 어노테이션을 이용하여  `@PreAuthorize` , `@PostAuthorize`, `@Secured`, `@RoleAllowed`사용할 수 있게 합니다.
+
+### @PreAuthorize
+
+```java
+@Configuration
+@EnableWebSecurity(debug = true)
+@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
+public class ProjectSecurityConfig {
+
+	@Bean
+	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+			.cors(cors -> cors.configurationSource(configurationSource()))
+			.csrf(csrf -> csrf.ignoringRequestMatchers("/contact", "/register")
+				.csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.addFilterBefore(new RequestValidationBeforeFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new AuthoritiesLoggingAfterFilter(), BasicAuthenticationFilter.class)
+			.addFilterAt(new AuthoritiesLoggingAtFilter(), BasicAuthenticationFilter.class)
+			.addFilterAfter(new JWTTokenGeneratorFilter(), BasicAuthenticationFilter.class)
+			.addFilterBefore(new JWTTokenValidatorFilter(), BasicAuthenticationFilter.class)
+			.authorizeHttpRequests(requests -> requests
+				.requestMatchers("/myAccount").hasRole("USER")
+				.requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+        //.requestMatchers("/myLoans").hasRole("USER")
+				.requestMatchers("/myLoans").authenticated()
+				.requestMatchers("/myCards").hasRole("USER")
+				.requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+				.requestMatchers("/notices", "/contact", "/register").permitAll()
+				.anyRequest().denyAll())
+			.formLogin(Customizer.withDefaults())
+			.httpBasic(Customizer.withDefaults())
+			.build();
+	}
+	
+	...
+}
+
+public interface LoanRepository extends CrudRepository<Loans, Long> {
+
+	@PreAuthorize("hasRole('USER')")
+	List<Loans> findByCustomerIdOrderByStartDtDesc(int customerId);
+
+}
+```
+
+메서드를 실행하기 전에 인가(권한 검증)를 하며 권한이 있는 경우에만 해당 메서드가 실행됩니다.  
+Role이 ROLE_USER인 경우에만 findByCustomerIdOrderByStartDtDesc() 메서드가 실행 되도록 합니다.  
+[SpEL](https://docs.spring.io/spring-security/reference/servlet/authorization/method-security.html#using-authorization-expression-fields-and-methods) + [SecurityExpressionRoot 클래스의 메서드](https://docs.spring.io/spring-security/site/docs/current/api/org/springframework/security/access/expression/SecurityExpressionRoot.html) 사용을 통해서 권한 조건을 줄 수 있습니다.
+
+
+
+### @PostAuthorize
+
+```java
+public interface LoanRepository extends CrudRepository<Loans, Long> {
+
+	//@PreAuthorize("hasRole('USER')")
+	List<Loans> findByCustomerIdOrderByStartDtDesc(int customerId);
+
+}
+
+@RestController
+public class LoansController {
+
+	private final LoanRepository loanRepository;
+
+	public LoansController(LoanRepository loanRepository) {
+		this.loanRepository = loanRepository;
+	}
+
+	@GetMapping("/myLoans")
+	@PostAuthorize("hasRole('ROOT')")
+	public List<Loans> getLoanDetails(@RequestParam int id) {
+		return loanRepository.findByCustomerIdOrderByStartDtDesc(id);
+	}
+}
+```
+
+메서드를 실행 후에 인가(권한 검증)를 하며 권한이 있는 경우에만 메서드 결과를 반환합니다.  
+`/myLoans`가 실행은 되었지만 결과를 엔드포인트에게 전달 하지 않고 403 상태코드를 반환합니다.
+
+
+
+### @PreFilter
+
+```java
+@RestController
+public class ContactController {
+
+	private final ContactRepository contactRepository;
+
+	public ContactController(ContactRepository contactRepository) {
+		this.contactRepository = contactRepository;
+	}
+
+	@PostMapping("/contact")
+	@PreFilter("filterObject.contactName != 'Test'")
+	public List<Contact> saveContactInquiryDetails(@RequestBody List<Contact> contacts) {
+		Contact contact = contacts.get(0);
+		contact.setContactId(getServiceReqNumber());
+		contact.setCreateDt(LocalDateTime.now());
+		contact = contactRepository.save(contact);
+		List<Contact> returnContacts = new ArrayList<>();
+		returnContacts.add(contact);
+		return returnContacts;
+	}
+	
+	...
+}
+```
+
+사전에 Collection 파라미터를 필터링을 한 후에 메서드를 실행 할 수 있도록 합니다.  
+contacts에서 contactName이 Test 아닌 객체들만 파라미터 담깁니다.
+
+### @PostFilter
+
+```java
+@RestController
+public class ContactController {
+
+	private final ContactRepository contactRepository;
+
+	public ContactController(ContactRepository contactRepository) {
+		this.contactRepository = contactRepository;
+	}
+
+	@PostMapping("/contact")
+	//@PreFilter("filterObject.contactName != 'Test'")
+	@PostFilter("filterObject.contactName != 'Test'")
+	public List<Contact> saveContactInquiryDetails(@RequestBody List<Contact> contacts) {
+		Contact contact = contacts.get(0);
+		contact.setContactId(getServiceReqNumber());
+		contact.setCreateDt(LocalDateTime.now());
+		contact = contactRepository.save(contact);
+		List<Contact> returnContacts = new ArrayList<>();
+		returnContacts.add(contact);
+		return returnContacts;
+	}
+	
+	...
+}
+```
+
+메서드 실행 후 Collcetion 반환 객체를 필터링을 한 후에 반환 하도록 합니다.  
+returnContacts List에서 contactName이 Test가 아닌 객체들만 반환 합니다.
