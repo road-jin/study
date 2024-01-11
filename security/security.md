@@ -1904,7 +1904,7 @@ returnContacts List에서 contactName이 Test가 아닌 객체들만 반환 합�
 
 **Authorization Code Grant Type**
 
-![image-20240110201140065](../../../../Users/minkyujin/Library/Application%20Support/typora-user-images/image-20240110201140065.png)
+![image-20240110201140065](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240110201140065.png)
 
 1. Resource owner가 Client 서비스를 사용하기 위해 로그인 요청을 합니다.
 2. Client에서 Authorization Code를 받기 위해 Authorization Server가 Login Page를 Resource owner에게 보여줍니다.
@@ -1941,7 +1941,7 @@ returnContacts List에서 contactName이 Test가 아닌 객체들만 반환 합�
 
 
 
-**RefreshToken Grant Type **
+**RefreshToken Grant Type**
 
 ![image-20240110152053014](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240110152053014.png)
 
