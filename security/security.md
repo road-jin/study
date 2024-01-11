@@ -1,3 +1,7 @@
+[TOC]
+
+
+
 ## Spring Security란?
 
 인증, 권한 부여 및 일반적인 공격에 대한 보호를 제공하는 프레임워크입니다.
@@ -1874,3 +1878,78 @@ public class ContactController {
 
 메서드 실행 후 Collcetion 반환 객체를 필터링을 한 후에 반환 하도록 합니다.  
 returnContacts List에서 contactName이 Test가 아닌 객체들만 반환 합니다.
+
+
+
+------
+
+
+
+## Oauth2
+
+웹, 모바일 및 데스크톱 애플리케이션에서 간단 하고 표준적인 방법 으로 안전한 인증을 허용하는 개방형프로토콜입니다 .
+
+**주요 용어**
+
+- Resource owner : 보호된 자원에 대한 접근 권한을 가지고 있는 경우를 말하며, 사람인 경우 최종 사용자라고 합니다.
+- Client : Resource owner의 자원을 사용하고자 접근 요청을 하는 어플리케이션을 말합니다.
+- Authorization Server : 인증/인가를 수행하는 서버로 클라이언트의 접근 자격을 확인하고 액세스 토큰을 발급하는 서버입니다.
+- Resource server : Resource Owner의 정보가 저장되어 있는 서버입니다.
+- Access Token : Resource server에게서 Resource owner의 정보를 획득할 때 사용되는 만료 기간이 있는 토큰입니다.
+- Refresh Token : Access Token 만료시 재발급 받기 위한 용도로 사용되는 Token입니다.
+
+
+
+### Oauth2 Flow
+
+**Authorization Code Grant Type**
+
+![image-20240110201140065](../../../../Users/minkyujin/Library/Application%20Support/typora-user-images/image-20240110201140065.png)
+
+1. Resource owner가 Client 서비스를 사용하기 위해 로그인 요청을 합니다.
+2. Client에서 Authorization Code를 받기 위해 Authorization Server가 Login Page를 Resource owner에게 보여줍니다.
+3. Resource owner는 로그인 정보를 입력하면 Client에서 Authorization Server에 Authorization Code 요청합니다.
+    - 요청 파라미터
+        - client_id 
+            - 필수
+            - Authorization Server에서 발급된 Client_id 값이어야 합니다.
+        - redirect_uri 
+            - Authorization Code를 반환 할 uri 입니다.
+        - response_type
+            - 필수
+            - 값은 무조건 `code` 입니다.
+        - scope
+            - client가 Resource owner 대신에 사용할 기능들에 대해 서술합니다.
+        - state
+            - CSRF 공격으로부터 보호하기 위해 고유한 값을 사용합니다.
+4. Client에서 Authorization Code로 Authorization Server에게 Access Token, Refresh Token을 요청하여 발급 받습니다.
+    - 요청 파라미터
+        - grant_type
+            - 필수
+            - 값은 무조건 `authorization_code` 입니다.
+        - code
+            - 필수
+            - Authorization Server에서 받은 Authorization Code 값이어야 합니다.
+        - client_id
+            - 필수
+            - Authorization Server에서 발급된 Client_id 값이어야 합니다.
+        - redirect_uri
+            -  필수
+            - Authorization Code 요청할 때 redirect_uri 값과 동일해야 합니다.
+5. Client는 Resources server에 AccessToken으로 사용자 정보 등 서비스 API 호출을 합니다.
+6. Client는 Resources server에서 받은 정보를 Resource owner에게 전달합니다.
+
+
+
+**RefreshToken Grant Type **
+
+![image-20240110152053014](https://raw.githubusercontent.com/road-jin/imagebox/main/images/image-20240110152053014.png)
+
+1. Client는 Resource owner의 정보에 접근하기 위해 Resource server에게 요청합니다.
+2. Resource server는 해당 Access Token을 가지고 인증하는 과정에 토큰이 만료 되었음을 확인하고,   
+    Client에게 토큰이 만료되어서 인증이 실패 되었다고 응답 합니다.
+3. Authorization Server에게 Access Token이 만료 되어서 재발급 해달라고 요청합니다.   
+    이때 Refresh Token을 사용합니다.
+4. Authorization Server는 Refresh Token이 정상적이면 새로운 Access Token과 새로운 Refresh Token을 Client에게 발급합니다.
+5. Client는 Resource owner의 정보에 접근하기 위해 Resource server에게 요청합니다.
+6. Resource server는 해당 Access Token을 인증 후 정상적이면 Client에게 Resource owner의 정보를 응답 합니다.
