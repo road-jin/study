@@ -6,7 +6,7 @@ import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.Comparator;
 
-public class WordsInSentence {
+public class Inflearn_1_3 {
 
 	/**
 	 인프런 - 자바 알고리즘 문제 풀이
@@ -16,8 +16,8 @@ public class WordsInSentence {
 		BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 		String word = br.readLine();
 
-		WordsInSentence wordsInSentence = new WordsInSentence();
-		String maxSentence = wordsInSentence.getMaxSentenceVer2(word);
+		Inflearn_1_3 inflearn_1_3 = new Inflearn_1_3();
+		String maxSentence = inflearn_1_3.getMaxSentenceVer2(word);
 
 		System.out.println(maxSentence);
 		br.close();

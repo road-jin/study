@@ -4,7 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
-public class UpperLowCaseChange {
+public class Inflearn_1_2 {
 
 	/**
 	 인프런 - 자바 알고리즘 문제 풀이
@@ -14,8 +14,8 @@ public class UpperLowCaseChange {
 		BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 		String inputString = br.readLine();
 
-		UpperLowCaseChange upperLowCaseChange = new UpperLowCaseChange();
-		String chagedString = upperLowCaseChange.change(inputString);
+		Inflearn_1_2 inflearn_1_2 = new Inflearn_1_2();
+		String chagedString = inflearn_1_2.change(inputString);
 
 		System.out.println(chagedString);
 		br.close();

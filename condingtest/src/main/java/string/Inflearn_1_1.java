@@ -4,7 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
-public class StringFind {
+public class Inflearn_1_1 {
 
 	/**
 	 인프런 - 자바 알고리즘 문제 풀이
@@ -15,8 +15,8 @@ public class StringFind {
 		String fristString = br.readLine();
 		char findCharacter = br.readLine().charAt(0);
 
-		StringFind stringFind = new StringFind();
-		long count = stringFind.getCount(fristString, findCharacter);
+		Inflearn_1_1 inflearn_1_1 = new Inflearn_1_1();
+		long count = inflearn_1_1.getCount(fristString, findCharacter);
 
 		System.out.println(count);
 		br.close();

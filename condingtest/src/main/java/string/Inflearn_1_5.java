@@ -4,7 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
-public class FlipSpecificCharacter {
+public class Inflearn_1_5 {
 
 	/**
 	 인프런 - 자바 알고리즘 문제 풀이
@@ -12,13 +12,13 @@ public class FlipSpecificCharacter {
 	 */
 	public static void main(String[] args) throws IOException {
 		BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
-		FlipSpecificCharacter flipSpecificCharacter = new FlipSpecificCharacter();
+		Inflearn_1_5 inflearn_1_5 = new Inflearn_1_5();
 
 		String randomString = br.readLine();
-		System.out.println(flipSpecificCharacter.flip(randomString));
+		System.out.println(inflearn_1_5.flipSpecificCharacter(randomString));
 	}
 
-	public String flip(String randomString) {
+	public String flipSpecificCharacter(String randomString) {
 		int lt = 0;
 		int rt = randomString.length() - 1;
 		char[] charArray = randomString.toCharArray();
