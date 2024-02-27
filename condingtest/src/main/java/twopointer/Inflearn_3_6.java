@@ -25,28 +25,23 @@ public class Inflearn_3_6 {
 
 	public static int getMaxLength(int[] binaries, int k) {
 		int maxLength = 0;
-		int tempLength = 0;
-		int changeCount = k;
+		int count = 0;
+		int left = 0;
 
-		for (int left = 0; left < binaries.length; left++) {
-			for (int right = left; right < binaries.length; right++) {
-				if (binaries[right] == 1) {
-					tempLength++;
-					continue;
-				}
-
-				if (changeCount > 0) {
-					tempLength++;
-					changeCount--;
-					continue;
-				}
-
-				break;
+		for (int right = 0; right < binaries.length; right++) {
+			if (binaries[right] == 0) {
+				count++;
 			}
 
-			changeCount = k;
-			maxLength = Math.max(maxLength, tempLength);
-			tempLength = 0;
+			while (count > k) {
+				if (binaries[left] == 0) {
+					count--;
+				}
+
+				left++;
+			}
+
+			maxLength = Math.max(maxLength, right - left + 1);
 		}
 
 		return maxLength;
