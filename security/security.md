@@ -1,7 +1,3 @@
-[TOC]
-
-
-
 ## Spring Security란?
 
 인증, 권한 부여 및 일반적인 공격에 대한 보호를 제공하는 프레임워크입니다.
@@ -882,7 +878,7 @@ public final class SimpleGrantedAuthority implements GrantedAuthority {
 
 
 
-![image-20240107211444632](../../../../Users/minkyujin/Library/Application%20Support/typora-user-images/image-20240107211444632.png)
+![image-20240107211444632](https://raw.githubusercontent.com/road-jin/imagebox/main/images//image-20240107211444632.png)
 Authentication, UserDetails 모두 GrantedAuthority 인터페이스를 필드로 참조하거나 사용하여 권한이나 역할을 가져오도록 하고 있습니다.
 
 
